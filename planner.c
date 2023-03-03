@@ -13,8 +13,9 @@ bool containsNegative(int n, ...);
 bool compareTm(struct tm *elementA, struct tm *elementB);
 bool isValidDate(struct tm* ptr);
 int convertStrWithCheck(char* toConvert);
-struct tm* parse_time(char* in);
-time_t inputTime();
+struct tm* parse_time(char* in, bool dateOnly);
+time_t inputTime(bool dateOnly);
+
 
 #define MAX_INPUT_LENGTH 255
 #define TIME_COMPONENTS 6
@@ -35,6 +36,24 @@ typedef struct
 {
     Element *head, *tail;
 } List;
+
+void displayList(List* list, int day, int month, int year);
+void insertAppointment(List *list, Appointment *appointment);
+void clearList(List *list);
+Element *findElement(List *list, char* query);
+bool deleteElement(List *list, char* query);
+
+void displayListEpoch(List* list, time_t time);
+void addAppointment(List *list, Appointment *appointment);
+void saveList(List *list, char *filename);
+List* readList(char *filename);
+List* newList();
+Appointment* newAppointment(time_t start, const char *description);
+void logMallocErr();
+void toLowercase(char* str);
+void clearStdin();
+void readFromStdin(char* buffer, int len);
+void menu(List* list);
 
 void logMallocErr(){
     perror("FATAL ERROR: memory exhausted, malloc() failed.");
@@ -240,7 +259,7 @@ List* readList(char *filename)
 // Function to clear the list from memory and release allocated memory
 void clearList(List *list)
 {
-    //TOD pseudoelemente freigeben
+    //TODO pseudoelemente freigeben
     Element *current = list->head;
     while (current != NULL)
     {
@@ -265,30 +284,46 @@ void clearList(List *list)
     list->head = list->tail = NULL;
 }
 
+void displayListEpoch(List* list, time_t time)
+{
+    struct tm* now = localtime(&time);
+    displayList(list, now->tm_mday, now->tm_mon+1, now->tm_year+1900);
+}
 
 // Function to display the appointments in the list
 void displayList(List* list, int day, int month, int year)
 {
+    bool printAll = day == 0 && month == 0 && year == 0;
+    bool appointmentFound = false;
+
     struct tm st;
-    st.tm_year = year-1900;
-    st.tm_mon = month-1;
-    st.tm_mday = day;
-    st.tm_isdst = -1;
-    st.tm_sec = st.tm_min = st.tm_hour = 0;
-    time_t time = mktime(&st);
+    time_t time;
+    if(!printAll) {
+        st.tm_year = year-1900;
+        st.tm_mon = month-1;
+        st.tm_mday = day;
+        st.tm_isdst = -1;
+        st.tm_sec = st.tm_min = st.tm_hour = 0;
+        time = mktime(&st);
+    }
+
     //printf("time: %lld\n", time);
     //printf("%d day %d month %d year\n", st.tm_mday, st.tm_mon, st.tm_year);
     Element *current = list->head;
+    if(current == NULL){
+        printf("] List of appointments is empty.\n");
+        return;
+    }
     while (current != NULL)
     {
         Appointment *appointment = current->appointment;
 
         // Check if the appointment should be printed
-        int print = 0;
-        if (day == 0 && month == 0 && year == 0)
+        int print = false;
+        if (printAll)
         {
             // If all the parameters are 0, print the entire list
-            print = 1;
+            print = true;
         }
         else
         {
@@ -308,17 +343,26 @@ void displayList(List* list, int day, int month, int year)
 
         if (print)
         {
+            if(!printAll && !appointmentFound){
+                printf("] Listing appointments on %04d-%02d-%02d:\n", year, month, day);
+                appointmentFound = true;
+            }
             // Print the start time and description of the appointment to the console
             printf("----\n%s -> %s\n", ctime(&(appointment->start)), appointment->description);
         }
 
         current = current->next;
     }
+    if(!appointmentFound && !printAll){
+        printf("] No appointment was found on %04d-%02d-%02d.\n", year, month, day);
+        return;
+    }
     printf("----\n");
 }
 
 //Function which checks if every character in the provided string is a number(0-9) -> negative numbers will return false
-void toLowercase(char* str){
+void toLowercase(char* str)
+{
     size_t n = 0;
     while (str[n] != '\0')
     {
@@ -327,7 +371,8 @@ void toLowercase(char* str){
     }
 }
 
-Element *findElement(List *list, char* query){
+Element *findElement(List *list, char* query)
+{
     toLowercase(query);
     Element *current = list->head;
     char desc[MAX_INPUT_LENGTH];
@@ -343,7 +388,8 @@ Element *findElement(List *list, char* query){
     return NULL;
 }
 
-bool deleteElement(List *list, char* query){
+bool deleteElement(List *list, char* query)
+{
     Element *toDelete = findElement(list, query);
 
     if(toDelete != NULL){
@@ -364,28 +410,14 @@ bool deleteElement(List *list, char* query){
     }
 }
 
-
-/*int main(){
-    List* l = newList();
-    insertAppointment(l, newAppointment(4758547572578, "droelfzig"));
-    insertAppointment(l, newAppointment(47585475725784678, "andere beschreibung..."));
-    insertAppointment(l, newAppointment(8547572578, "drog kleinste"));
-
-    displayList(l, 0, 0, 0);
-
-    saveList(l, "tst.csv");
-
-    clearList(l);
-
-
-    return 0;
-}*/
-void clearStdin(){
+void clearStdin()
+{
     int c;
     while((c=getchar()) != '\n' && c != EOF){}
 }
 
-void readFromStdin(char* buffer, int len){
+void readFromStdin(char* buffer, int len)
+{
 
     fgets(buffer, len, stdin);
 
@@ -401,7 +433,8 @@ void readFromStdin(char* buffer, int len){
     }
 }
 
-void menu(List* list){
+void menu(List* list)
+{
     char input[MAX_INPUT_LENGTH];
 
     // Loop until the user quits
@@ -418,11 +451,21 @@ void menu(List* list){
             printf("] ------------------------\n");
             printf("] - Appointment creation -\n");
             printf("] ------------------------\n");
-            time_t appTime = inputTime();
+            time_t appTime = inputTime(false);
             printf("] entered date: %s\n] please enter a short description for your appointment: \n", ctime(&appTime));
             //fgets(input, MAX_INPUT_LENGTH, stdin);
             readFromStdin(input, MAX_INPUT_LENGTH);
-            addAppointment(list, newAppointment(appTime, input));
+            insertAppointment(list, newAppointment(appTime, input));
+        } else if (strstr(input, "deleteall") != NULL) {
+            printf("] Are you sure you want to delete all appointments? (y/n):");
+            char c;
+            if((c = getchar()) == 'y' || c == 'Y'){
+                clearList(list);
+                printf("] Deletion complete!\n");
+            }else{
+                printf("] Deletion aborted!\n");
+            }
+            clearStdin();
         } else if (strstr(input, "delete") != NULL) {
             printf("] Please enter your search term:\n>");
             readFromStdin(input, MAX_INPUT_LENGTH);
@@ -437,9 +480,11 @@ void menu(List* list){
             char c;
             if((c = getchar()) == 'y' || c == 'Y'){
                 deleteElement(list, input);
+                printf("] Deletion complete!\n");
+            }else{
+                printf("] Deletion aborted!\n");
             }
             clearStdin();
-            printf("] Deletion complete!\n");
         } else if (strstr(input, "search") != NULL) {
             printf("] Please enter your search term:\n>");
             readFromStdin(input, MAX_INPUT_LENGTH);
@@ -451,20 +496,26 @@ void menu(List* list){
                 printf(" Exhausted!\n  No appointment in the list matches your query.\n");
             }
             //printf("] You have chosen to search for an appointment.\n");
+        } else if (strstr(input, "listtoday") != NULL) {
+            displayListEpoch(list, time(NULL));
+        } else if (strstr(input, "listday") != NULL) {
+            displayListEpoch(list, inputTime(true));
         } else if (strstr(input, "list") != NULL) {
             displayList(list, 0, 0, 0);
-            //printf("] You have chosen to list all appointments.\n");
         } else if (strstr(input, "quit") != NULL) {
             printf("] Exiting program.\n");
             return;
         } else if (strstr(input, "menu") != NULL) {
             printf("] Available commands: \n");
-            printf("]   create - create a new appointment  \n");
-            printf("]   delete - delete a appointment from file \n");
-            printf("]   search - search for a appointment  \n");
-            printf("]   list - list all appointments  \n");
-            printf("]   quit - exit the program\n");
-            printf("]   menu - show this menu\n");
+            printf("] (0) quit - exit the program\n");
+            printf("] (1) create - create a new appointment  \n");
+            printf("] (2) delete - delete an appointment from file \n");
+            printf("] (3) deleteall - delete all appointments  \n");
+            printf("] (4) search - search for an appointment  \n");
+            printf("] (5) list - list all appointments  \n");
+            printf("] (6) listday - list appointments on a specific date  \n");
+            printf("] (7) listtoday - list all appointments planned for today \n");
+            printf("] (8) menu - show this menu\n");
         }/* else {
             printf("] Unrecognized command. Try 'menu' for a list of supported commands\n");
         }*/
@@ -489,9 +540,11 @@ int main(int argc, char** argv) {
   List* l = readList(filename);
   //printf("done reading.\n");
 
-    displayList(l, 15, 2, 2023);
-
-    menu(l);
+  /*time_t nowEpoch = time(NULL);
+  struct tm* now = localtime(&nowEpoch);
+  displayList(l, now->tm_mday, now->tm_mon+1, now->tm_year+1900);*/
+  displayListEpoch(l, time(NULL));
+  menu(l);
 
   saveList(l, filename);
   clearList(l);
@@ -581,7 +634,7 @@ int convertStrWithCheck(char* toConvert){
 //but every delimiter will work in every position(e.g. yyyy mm dd:hh-mm-ss would work as well)
 //order of units however has to remain consistent with decreasing significance from left to right
 //returned pointer is allocated and needs to be freed
-struct tm* parse_time(char* in){
+struct tm* parse_time(char* in, bool dateOnly){
     struct tm* time = (struct tm*) malloc(sizeof(struct tm));
     if(time == NULL){
         printf("] FATAL ERROR: memory exhausted, could not create time\n");
@@ -606,40 +659,41 @@ struct tm* parse_time(char* in){
     time->tm_year = (components[0] > 2020 && components[0] < 10000) ? components[0]-1900 : -1;
     time->tm_mon = (components[1] > 0 && components[1] < 13) ? components[1]-1 : -1;
     time->tm_mday = (components[2] > 0 && components[2] < 32) ? components[2] : -1;
-    time->tm_hour = (components[3] >= 0 && components[3] < 24) ? components[3] : -1;
-    time->tm_min = (components[4] >= 0 && components[4] < 60) ? components[4] : -1;
-    time->tm_sec = (components[5] >= 0 && components[5] < 60) ? components[5] : -1;
+    time->tm_hour = (components[3] >= 0 && components[3] < 24) ? components[3] : (dateOnly ? 0 : -1);
+    time->tm_min = (components[4] >= 0 && components[4] < 60) ? components[4] : (dateOnly ? 0 : -1);
+    time->tm_sec = (components[5] >= 0 && components[5] < 60) ? components[5] : (dateOnly ? 0 : -1);
     time->tm_isdst = -1; //-1 means we don't know whether the provided time has daylight savings or not
 
     return time;
 }
 
 //prompts the user to enter a time in a loop until a valid time has been entered
-time_t inputTime(){
+time_t inputTime(bool dateOnly){
     time_t curr_time = time(NULL);
-    printf("] Time needs to be formatted according to ISO 8601: yyyy-mm-dd hh:mm:ss\n");
+    printf("] Time needs to be formatted according to ISO 8601: yyyy-mm-dd");printf(dateOnly ? "\n":" hh:mm:ss\n");
     char input[MAX_INPUT_LENGTH];
     struct tm *time = NULL;
     time_t unixtime;
     bool done = false;
 
     while(!done) {
-        printf("] Please enter date & time:\n");
+        printf("] Please enter date");printf(dateOnly ? ":\n":" & time:\n");
         //fgets(input, 256, stdin);
         readFromStdin(input, MAX_INPUT_LENGTH);
 
-        time = parse_time(input);
+        time = parse_time(input, dateOnly);
 
         //printf("mktime result: %ld\n", unixtime);
         //printf("tm: %d-%d-%d %d:%d:%d\n", time->tm_year, time->tm_mon, time->tm_mday, time->tm_hour, time->tm_min, time->tm_sec);
         //printf("dst: %d\n", time->tm_isdst);
-        if(time != NULL && isValidDate(time) && (mktime(time) > curr_time)){
+        bool valid = isValidDate(time);
+        if(time != NULL && valid && (mktime(time) > curr_time)){
             unixtime = mktime(time);
             //printf("tm: %d-%d-%d %d:%d:%d\n", time->tm_year, time->tm_mon, time->tm_mday, time->tm_hour, time->tm_min, time->tm_sec);
             //printf("dst: %d\n", time->tm_isdst);
             printf("ctime: %s\n", ctime(&unixtime));
             done = true;
-        }else if((mktime(time) <= curr_time)){
+        }else if(time != NULL && valid && (mktime(time) <= curr_time)){
             printf("] It is only possible to plan FUTURE appointments.\n");
         }else{
             printf("] Invalid time!\n");
