@@ -309,9 +309,7 @@ bool deleteElement(List list, const char* query){
     if(found && listNotEmpty){
         Element *current = list.head->next;
         while (current->appointment != NULL){
-            printf("%ld", current->appointment->start);
             if(current->next == toDelete){
-                printf("i");
                 current->next = toDelete->next;
                 free(toDelete->appointment->description);
                 free(toDelete->appointment);
@@ -319,10 +317,7 @@ bool deleteElement(List list, const char* query){
                 return true;
             }
             current = current->next;
-            printf("\n");
         }
-    }else{
-        printf( found ? (listNotEmpty ? "found & listNotEmpty\n":"list empty :(\n"):"not found\n");
     }
     return false;
 }
