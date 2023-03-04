@@ -303,8 +303,10 @@ Element *findElement(List list, const char* query){
 //otherwise, return false
 bool deleteElement(List list, const char* query){
     Element *toDelete = findElement(list, query);
+    bool found = (toDelete != NULL);
+    bool listNotEmpty = (list.head->next != list.tail);
 
-    if(toDelete != NULL && list.head->next != list.tail){
+    if(found && listNotEmpty){
         Element *current = list.head->next;
         while (current->appointment != NULL){
             printf("%ld", current->appointment->start);
@@ -320,7 +322,7 @@ bool deleteElement(List list, const char* query){
             printf("\n");
         }
     }else{
-        printf("?\n");
+        printf( found ? (listNotEmpty ? "found & listNotEmpty\n":"list empty :(\n"):"not found\n");
     }
     return false;
 }
@@ -381,6 +383,7 @@ void menu(List list){
                 printf(" Found!\n] Date: %s] Description: %s\n", ctime(&(ref->appointment->start)), ref->appointment->description);
             }else{
                 printf(" Exhausted!\n] No appointment in the list matches your query\n");
+                continue;
             }
             printf("] Are you sure you want to delete this appointment? (y/n):");
             char c;
