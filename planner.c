@@ -6,8 +6,6 @@
 #include <stdarg.h>
 #include <ctype.h>
 
-//#include "timehelper.h"
-
 bool isNumber(char* str);
 bool containsNegative(int n, ...);
 bool compareTm(struct tm *elementA, struct tm *elementB);
@@ -15,7 +13,6 @@ bool isValidDate(struct tm* ptr);
 int convertStrWithCheck(char* toConvert);
 struct tm* parse_time(char* in, bool dateOnly);
 time_t inputTime(bool dateOnly);
-
 
 #define MAX_INPUT_LENGTH 255
 #define TIME_COMPONENTS 6
@@ -37,31 +34,32 @@ typedef struct
     Element *head, *tail;
 } List;
 
-void displayList(List* list, int day, int month, int year);
-void insertAppointment(List *list, Appointment *appointment);
-void clearList(List *list);
-Element *findElement(List *list, char* query);
-bool deleteElement(List *list, char* query);
+List createList();
+void clearList(List list);
+void insertAppointment(List list, time_t start, const char* description);
+Element *findElement(List list, const char* query);
+bool deleteElement(List list, const char* query);
+void printAppointment(Appointment *toPrint);
+void printList(List list, int day, int month, int year);
 
-void displayListEpoch(List* list, time_t time);
-void addAppointment(List *list, Appointment *appointment);
-void saveList(List *list, char *filename);
-List* readList(char *filename);
-List* newList();
+void displayListEpoch(List list, time_t time);
+void saveList(List list, char *filename);
+List readList(char *filename);
 Appointment* newAppointment(time_t start, const char *description);
 void logMallocErr();
 void toLowercase(char* str);
 void clearStdin();
 void readFromStdin(char* buffer, int len);
-void menu(List* list);
+void menu(List list);
 
+//log an error to stderr after malloc failed to allocate new memory
 void logMallocErr(){
-    perror("FATAL ERROR: memory exhausted, malloc() failed.");
+    fprintf(stderr, "FATAL ERROR: memory exhausted, malloc() failed.\n");
 }
 
-// Function to create a new appointment
-Appointment* newAppointment(time_t start, const char *description)
-{
+//create a new appointment starting at the given time 'start'
+//allocate memory for the structure & description usinc malloc() and return a pointer to said structure
+Appointment* newAppointment(time_t start, const char *description){
     Appointment *appointment = (Appointment*) malloc(sizeof(Appointment));
     if(appointment == NULL){
         logMallocErr();
@@ -78,158 +76,85 @@ Appointment* newAppointment(time_t start, const char *description)
     return appointment;
 }
 
-// Function to create a new list
-List* newList()
-{
-    List *list = (List*) malloc(sizeof(List));
-    if(list == NULL){
+//create & return an empty list
+List createList(){
+    List list;
+    Element *head = malloc (sizeof (Element));
+    Element *tail = malloc (sizeof (Element));
+    if(head == NULL || tail == NULL){
         logMallocErr();
-        return NULL;
+        exit(EXIT_FAILURE);
     }
-    list->head = list->tail = NULL;
+    head->appointment = tail->appointment = NULL;
+    head->next = tail->next = tail;
+    list.head = head;
+    list.tail = tail;
 
     return list;
 }
 
-// Function to add an appointment to the end of the list
-void addAppointment(List *list, Appointment *appointment)
-{
+//create a new appointment and insert it at the appropriate position in the given list
+void insertAppointment(List list, time_t start, const char *description){
+    Appointment* appointment = newAppointment(start, description);
     Element *element = (Element*) malloc(sizeof(Element));
     if(element == NULL){
         logMallocErr();
         return;
     }
     element->appointment = appointment;
-    element->next = NULL;
 
-    if (list->head == NULL)
-    {
-        list->head = list->tail = element;
-    }
-    else
-    {
-        list->tail->next = element;
-        list->tail = element;
-    }
-}
-
-// Function to add an appointment to the list
-void insertAppointment(List *list, Appointment *appointment)
-{
-    Element *element = (Element*) malloc(sizeof(Element));
-    if(element == NULL){
-        logMallocErr();
-        return;
-    }
-    element->appointment = appointment;
-    element->next = NULL;
-
-    if (list->head == NULL)
-    {
-        // If the list is empty, insert the appointment at the beginning
-        list->head = list->tail = element;
-    }
-    else
-    {
-        Element *current = list->head;
-        Element *previous = NULL;
-
-        // Find the correct position to insert the appointment
-        while (current != NULL && current->appointment->start < appointment->start)
-        {
+    if(list.head->next == list.tail){
+        element->next = list.tail;
+        list.head->next = element;
+    }else{
+        Element *current = list.head->next;
+        Element *previous = list.head;
+        while(current->appointment != NULL && appointment->start > current->appointment->start){
             previous = current;
             current = current->next;
         }
-
-        // Insert the appointment at the correct position
-        if (previous == NULL)
-        {
-            // If the appointment is the new head of the list
-            element->next = list->head;
-            list->head = element;
-        }
-        else
-        {
-            // If the appointment is in the middle or at the end of the list
-            element->next = current;
-            previous->next = element;
-        }
-
-        if (current == NULL)
-        {
-            // If the appointment is the new tail of the list
-            list->tail = element;
-        }
+        element->next = current;
+        previous->next = element;
     }
 }
 
 // Function to save the list to a CSV file
-void saveList(List *list, char *filename)
-{
-    // Open the file in write mode
-    FILE *file = fopen(filename, "w");
+void saveList(List list, char *filename){
+    if(list.head->next != list.tail){
+        FILE *file = fopen(filename, "w");
 
-    Element *current = list->head;
-    while (current != NULL)
-    {
-        Appointment *appointment = current->appointment;
+        Element *current = list.head->next;
+        while (current->appointment != NULL){
+            //y2k38-bug possible depending on data model and size of time_t.. %ld should be replaced with %lld
+            fprintf(file, "%lld,%s\n", current->appointment->start, current->appointment->description);
 
-        // Write the start time and description of the appointment to the file
-        fprintf(file, "%ld,%s\n", appointment->start, appointment->description);
-
-        current = current->next;
+            current = current->next;
+        }
+        fclose(file);
     }
-
-    // Close the file
-    fclose(file);
 }
 
-// Function to read the list from a CSV file
-List* readList(char *filename)
-{
-    // Create a new list
-    List *list = newList();
-
-    // Get current system time
+// Function to read the appointment list from file
+List readList(char *filename){
+    List list = createList();
     time_t curr_time = time(NULL);
 
-    // Create counter to count skipped appointments
     int appointments_skipped = 0;
-
-    // Log if there were issues while reading from the file
     bool file_damaged = false;
 
-    // Open the file in read mode
     FILE *file = fopen(filename, "r");
 
     if(file != NULL){
-
-        // Read the file line by line
-        char line[256];
-        while (fgets(line, sizeof(line), file) != NULL)
-        {
-            // Parse the start time and description from the line
-            long start;
+        char line[MAX_INPUT_LENGTH+50];
+        while (fgets(line, sizeof(line), file) != NULL){
+            long long start;
             char description[256];
-
-            // Check if sscanf was able to read 2 parameters from the line, ignore the line otherwise
-            if(sscanf(line, "%ld,%[^\n]", &start, description) == 2){
-                //printf("read appointment %ld - %s\n", start, description);
+            //y2k38-bug possible depending on data model and size of time_t %ld should be replaced with %lld
+            if(sscanf(line, "%lld,%[^\n]", &start, description) == 2){ // Check if sscanf was able to read both parameters from the line, ignore the line otherwise
                 if(start > curr_time){
-                    //allocate memory and copy the description, otherwise it would not be persistent
-                    /*char * desc = malloc(sizeof(description));
-                    if(desc == NULL){
-                        printf("FATAL ERROR: memory exhausted, could not read the full list.\n");
-                        return list;
-                    }
-                    strncpy(desc, description, sizeof(description));*/
-
-                    // Create a new appointment using the parsed data
                     Appointment *appointment = newAppointment(start, description);
-
-                    // Add the appointment to the list
                     if(appointment != NULL){
-                        addAppointment(list, appointment);
+                        insertAppointment(list, start, description);
                     }
                 }else{
                     appointments_skipped++;
@@ -237,62 +162,57 @@ List* readList(char *filename)
             }else{
                 file_damaged = true;
             }
-
         }
 
-        // Close the file
         fclose(file);
     }else{
-        printf("] %s couldn't be read. Does the file exist?\n", filename);
+        fprintf(stderr, "ERROR: %s couldn't be read. Does the file exist?\n", filename);
     }
 
     // Display some status information
     if (appointments_skipped > 0)
-        printf("] Skipped %d appointments because they were too old.\n", appointments_skipped);
+        printf("] Skipped %d appointments because they expired.\n", appointments_skipped);
     if (file_damaged)
         printf("] The file %s seems to be damaged, some data might not be available as expected.\n Before issuing the command 'quit', make sure to create a copy of said file.\nUpon issuing the command, all data that couldn't be read will be lost.\n", filename);
-
 
     return list;
 }
 
-// Function to clear the list from memory and release allocated memory
-void clearList(List *list)
-{
-    //TODO pseudoelemente freigeben
-    Element *current = list->head;
-    while (current != NULL)
-    {
-        Element *next = current->next;
+// empty the provided list and release the allocated memory of all included items
+void clearList(List list){
+    if(list.head->next != list.tail){
+        Element *current = list.head->next;
+        while (current->appointment != NULL){
+            Element *next = current->next;
 
-        // Free the memory allocated for the description of the appointment
-        //printf("freeing description\n");
-        free(current->appointment->description);
+            free(current->appointment->description);
+            free(current->appointment);
+            free(current);
 
-        // Free the memory allocated for the appointment
-        //printf("freeing appointment\n");
-        free(current->appointment);
-
-        // Free the memory allocated for the element
-        //printf("freeing list element\n");
-        free(current);
-
-        current = next;
+            current = next;
+        }
+        list.head->next = list.tail;
     }
-
-    // Set the head and tail of the list to NULL
-    list->head = list->tail = NULL;
 }
 
-void displayListEpoch(List* list, time_t time)
-{
+//prints all appointments to console which satisfy the following criteria:
+// - the start time of the appointment is on the same day as the provided argument time
+void displayListEpoch(List list, time_t time){
     struct tm* now = localtime(&time);
-    displayList(list, now->tm_mday, now->tm_mon+1, now->tm_year+1900);
+    printList(list, now->tm_mday, now->tm_mon+1, now->tm_year+1900);
 }
 
-// Function to display the appointments in the list
-void displayList(List* list, int day, int month, int year)
-{
+//prints information of the given appointment to stdout in a single line
+void printAppointment(Appointment *toPrint){
+    struct tm* now = localtime(&(toPrint->start));
+    printf("%04d-%02d-%02d %02d:%02d:%02d // Description: %s\n", now->tm_year+1900, now->tm_mon+1, now->tm_mday, now->tm_hour, now->tm_min, now->tm_sec, toPrint->description);
+}
+
+/* Function to display the appointments in the given list:
+ * if all 3 integer arguments are set to zero, list every appointment in the list
+ * otherwise, print only those appointments, which happen to have their start time on the provided day.
+ * (all elements in the provided list have to be sorted by start time of appointment in ascending order)*/
+void printList(List list, int day, int month, int year){
     bool printAll = day == 0 && month == 0 && year == 0;
     bool appointmentFound = false;
 
@@ -307,166 +227,144 @@ void displayList(List* list, int day, int month, int year)
         time = mktime(&st);
     }
 
-    //printf("time: %lld\n", time);
-    //printf("%d day %d month %d year\n", st.tm_mday, st.tm_mon, st.tm_year);
-    Element *current = list->head;
-    if(current == NULL){
+    if(list.head->next == list.tail){
         printf("] List of appointments is empty.\n");
-        return;
-    }
-    while (current != NULL)
-    {
-        Appointment *appointment = current->appointment;
+    }else{
+        Element *current = list.head->next;
 
-        // Check if the appointment should be printed
-        int print = false;
-        if (printAll)
-        {
-            // If all the parameters are 0, print the entire list
-            print = true;
-        }
-        else
-        {
-            /*// Get the start time of the appointment
-            struct tm *start = localtime(&(appointment->start));
+        while (current->appointment != NULL){
+            Appointment *appointment = current->appointment;
 
-            // Check if the start time matches the specified day, month, and year
-            if (start->tm_mday == day && start->tm_mon + 1 == month && start->tm_year + 1900 == year)
-            {
-                print = 1;
-            }*/
-            // 60s -> 60min -> 24h => 86400s in 1d
-            if(appointment->start >= time && appointment->start <= time+86400){
-                print = true;
+            // Check if the appointment should be printed
+            bool print = false;
+            if (printAll){
+                print = true; // If all the parameters are 0, print the entire list
+            }else if(appointment->start >= time){
+                if(appointment->start <= time+86400){ // 60s -> 60min -> 24h => 86400s in 1d
+                    print = true;
+                }else{
+                    break;
+                }
             }
-        }
 
-        if (print)
-        {
-            if(!printAll && !appointmentFound){
-                printf("] Listing appointments on %04d-%02d-%02d:\n", year, month, day);
-                appointmentFound = true;
+            if (print){
+                if(!printAll && !appointmentFound){
+                    printf("] Listing appointments on %04d-%02d-%02d:\n", year, month, day);
+                    appointmentFound = true;
+                }
+                printf("----\n");
+                printAppointment(appointment);
             }
-            // Print the start time and description of the appointment to the console
-            printf("----\n%s -> %s\n", ctime(&(appointment->start)), appointment->description);
-        }
 
-        current = current->next;
+            current = current->next;
+        }
+        if(!appointmentFound && !printAll){
+            printf("] No appointment was found on %04d-%02d-%02d.\n", year, month, day);
+            return;
+        }
+        printf("----\n");
     }
-    if(!appointmentFound && !printAll){
-        printf("] No appointment was found on %04d-%02d-%02d.\n", year, month, day);
-        return;
-    }
-    printf("----\n");
 }
 
-//Function which checks if every character in the provided string is a number(0-9) -> negative numbers will return false
-void toLowercase(char* str)
-{
+//turn every character in the provided string into its lowercase version
+void toLowercase(char* str){
     size_t n = 0;
-    while (str[n] != '\0')
-    {
+    while (str[n] != '\0'){
         str[n] = tolower(str[n]);
         n++;
     }
 }
 
-Element *findElement(List *list, char* query)
-{
-    toLowercase(query);
-    Element *current = list->head;
-    char desc[MAX_INPUT_LENGTH];
-    while (current != NULL)
-    {
-        strncpy(desc, current->appointment->description, strlen(current->appointment->description)+1);
-        toLowercase(desc);
-        if(strstr(desc, query) != NULL){
-            return current;
+//find the first element in 'list' whose appointment description matches 'query'(case-insensitive)
+//returns a pointer to the element or NULL if no matching element was found in 'list'
+Element *findElement(List list, const char* query){
+    if(list.head->next != list.tail){
+        toLowercase(query);
+        char desc[MAX_INPUT_LENGTH];
+        Element *current = list.head->next;
+        while (current->appointment != NULL)
+        {
+            strncpy(desc, current->appointment->description, strlen(current->appointment->description)+1);
+            toLowercase(desc);
+            if(strstr(desc, query) != NULL){
+                return current;
+            }
+            current = current->next;
         }
-        current = current->next;
     }
     return NULL;
 }
 
-bool deleteElement(List *list, char* query)
-{
+//use findElement() with the provided arguments to find a matching element in 'list'
+//if found, remove the element from 'list' and free associated memory then return true
+//otherwise, return false
+bool deleteElement(List list, const char* query){
     Element *toDelete = findElement(list, query);
 
-    if(toDelete != NULL){
-        Element *current = list->head;
-        while (current != NULL)
-        {
+    if(toDelete != NULL && list.head->next != list.tail){
+        Element *current = list.head->next;
+        while (current->appointment != NULL){
             if(current->next == toDelete){
                 current->next = toDelete->next;
                 free(toDelete->appointment->description);
                 free(toDelete->appointment);
+                free(toDelete);
                 return true;
             }
             current = current->next;
         }
-        return false;
-    }else{
-        return false;
     }
+    return false;
 }
 
-void clearStdin()
-{
+//'flush' the input buffer
+void clearStdin(){
     int c;
     while((c=getchar()) != '\n' && c != EOF){}
 }
 
-void readFromStdin(char* buffer, int len)
-{
-
+//write text input with a maximum length of 'len'-2 from stdin into 'buffer'
+void readFromStdin(char* buffer, int len){
     fgets(buffer, len, stdin);
 
     size_t size = strlen(buffer);
-
-    //truncate last char (\n)
-    buffer[size-1] = '\0';
+    buffer[size-1] = '\0'; //truncate last char (\n)
 
     if (size >= len-1){
-        printf("] Please enter a maximum of %d characters!\n>", len-2);
+        fprintf(stderr, "ERROR: Please enter a maximum of %d characters\n", len-2);
+        printf(">");
         clearStdin();
         readFromStdin(buffer, len);
     }
 }
 
-void menu(List* list)
-{
+//start an interactive prompt in the console, allowing someone to manipulate 'list' via text commands
+void menu(List list){
     char input[MAX_INPUT_LENGTH];
 
     // Loop until the user quits
-    while (1) {
-        printf("] Enter a command ('menu' will display a list of possible commands): \n>");
-
-        // Read the user's input
-        //scanf("%s", input);
+    while (1){
+        printf("] Enter a command ('menu' or '8' will display a list of possible commands): \n>");
         readFromStdin(input, MAX_INPUT_LENGTH);
 
-
         // Check for the different commands and perform the appropriate action
-        if (strstr(input, "create") != NULL) {
-            printf("] ------------------------\n");
-            printf("] - Appointment creation -\n");
-            printf("] ------------------------\n");
+        if (!strcmp(input, "create") || !strcmp(input, "1")) {
+            printf("] Starting appointment creation\n");
             time_t appTime = inputTime(false);
-            printf("] entered date: %s\n] please enter a short description for your appointment: \n", ctime(&appTime));
-            //fgets(input, MAX_INPUT_LENGTH, stdin);
+            printf("] Entered date: %s] Please enter a short description for your appointment: \n>", ctime(&appTime));
             readFromStdin(input, MAX_INPUT_LENGTH);
-            insertAppointment(list, newAppointment(appTime, input));
-        } else if (strstr(input, "deleteall") != NULL) {
+            insertAppointment(list, appTime, input);
+        } else if (!strcmp(input, "deleteall") || !strcmp(input, "3")) {
             printf("] Are you sure you want to delete all appointments? (y/n):");
             char c;
             if((c = getchar()) == 'y' || c == 'Y'){
                 clearList(list);
-                printf("] Deletion complete!\n");
+                printf("] Cleared all appointments!\n");
             }else{
-                printf("] Deletion aborted!\n");
+                printf("] Operation aborted!\n");
             }
             clearStdin();
-        } else if (strstr(input, "delete") != NULL) {
+        } else if (!strcmp(input, "delete") || !strcmp(input, "2")) {
             printf("] Please enter your search term:\n>");
             readFromStdin(input, MAX_INPUT_LENGTH);
             printf("] Searching.. ");
@@ -474,7 +372,7 @@ void menu(List* list)
             if(ref != NULL){
                 printf(" Found!\n] Date: %s] Description: %s\n", ctime(&(ref->appointment->start)), ref->appointment->description);
             }else{
-                printf(" Exhausted!\n] No appointment in the list matches your query.\n");
+                printf(" Exhausted!\n] No appointment in the list matches your query\n");
             }
             printf("] Are you sure you want to delete this appointment? (y/n):");
             char c;
@@ -485,7 +383,7 @@ void menu(List* list)
                 printf("] Deletion aborted!\n");
             }
             clearStdin();
-        } else if (strstr(input, "search") != NULL) {
+        } else if (!strcmp(input, "search") || !strcmp(input, "4")) {
             printf("] Please enter your search term:\n>");
             readFromStdin(input, MAX_INPUT_LENGTH);
             printf("] Searching.. ");
@@ -493,19 +391,18 @@ void menu(List* list)
             if(ref != NULL){
                 printf(" Found!\n] Date: %s\n] Description: %s\n", ctime(&(ref->appointment->start)), ref->appointment->description);
             }else{
-                printf(" Exhausted!\n  No appointment in the list matches your query.\n");
+                printf(" Exhausted!\n  No appointment in the list matches your query\n");
             }
-            //printf("] You have chosen to search for an appointment.\n");
-        } else if (strstr(input, "listtoday") != NULL) {
+        } else if (!strcmp(input, "listtoday") || !strcmp(input, "7")) {
             displayListEpoch(list, time(NULL));
-        } else if (strstr(input, "listday") != NULL) {
+        } else if (!strcmp(input, "listday") || !strcmp(input, "6")) {
             displayListEpoch(list, inputTime(true));
-        } else if (strstr(input, "list") != NULL) {
-            displayList(list, 0, 0, 0);
-        } else if (strstr(input, "quit") != NULL) {
-            printf("] Exiting program.\n");
+        } else if (!strcmp(input, "list") || !strcmp(input, "5")) {
+            printList(list, 0, 0, 0);
+        } else if (!strcmp(input, "quit") || !strcmp(input, "0")) {
+            printf("] Exiting program\n");
             return;
-        } else if (strstr(input, "menu") != NULL) {
+        } else if (!strcmp(input, "menu") || !strcmp(input, "8")) {
             printf("] Available commands: \n");
             printf("] (0) quit - exit the program\n");
             printf("] (1) create - create a new appointment  \n");
@@ -516,51 +413,40 @@ void menu(List* list)
             printf("] (6) listday - list appointments on a specific date  \n");
             printf("] (7) listtoday - list all appointments planned for today \n");
             printf("] (8) menu - show this menu\n");
-        }/* else {
-            printf("] Unrecognized command. Try 'menu' for a list of supported commands\n");
-        }*/
+        } else {
+            fprintf(stderr, "ERROR: Unrecognized command\n");
+        }
     }
 }
 
 
 int main(int argc, char** argv) {
-
-  // Get the filename from the parameter
   char* filename;
-
-  // Check if a filename was passed as a parameter
-  if (argc < 2) {
+  if (argc < 2) { // Check if a filename was passed as a parameter
     printf("] No filename provided, using 'termine.txt'\n");
     filename = "termine.txt";
   }else{
     filename = argv[1];
   }
 
-  //printf("reading file..\n");
-  List* l = readList(filename);
-  //printf("done reading.\n");
-
-  /*time_t nowEpoch = time(NULL);
-  struct tm* now = localtime(&nowEpoch);
-  displayList(l, now->tm_mday, now->tm_mon+1, now->tm_year+1900);*/
+  List l = readList(filename);
   displayListEpoch(l, time(NULL));
   menu(l);
 
   saveList(l, filename);
   clearList(l);
+  free(l.tail);
+  free(l.head);
 
-  //printf("-.-");
   return 0;
 }
 
 //Function which checks if every character in the provided string is a number(0-9) -> negative numbers will return false
 bool isNumber(char* str){
     size_t n = 0;
-    while (str[n] != '\0')
-    {
-        //0-9
+    while (str[n] != '\0'){
         if(!isdigit(str[n])){
-            printf("%c is not numeric\n", str[n]);
+            fprintf(stderr, "ERROR: %c is not a number\n", str[n]);
             return false;
         }
         n++;
@@ -570,24 +456,15 @@ bool isNumber(char* str){
 
 //variadic function that returns true, should all arguments passed to the function be positive integers. false otherwise
 bool containsNegative(int n, ...){
-    // Declaring pointer to the
-    // argument list
     va_list ptr;
-
-    // Initializing argument to the
-    // list pointer
     va_start(ptr, n);
 
     for (int i = 0; i < n; i++){
-        // Accessing current variable
-        // and pointing to next one
         int s = va_arg(ptr, int);
         if(s < 0){
             return true;
         }
     }
-
-    // Ending argument list traversal
     va_end(ptr);
 
     return false;
@@ -605,15 +482,13 @@ bool compareTm(struct tm *elementA, struct tm *elementB){
     return (year && mon && mday && hour && min && sec);
 }
 
+//check if the given tm struct represents a valid date
 bool isValidDate(struct tm* ptr){
     struct tm check;
     memcpy(&check, ptr, sizeof(struct tm));
     bool parserOk = !containsNegative(6, ptr->tm_year, ptr->tm_mon, ptr->tm_mday, ptr->tm_hour, ptr->tm_min, ptr->tm_sec);
     bool successfulMktime = mktime(ptr) > -1;
     bool mktimeUnchanged = compareTm(ptr, &check);
-
-    printf("validation result: [parser=%d, mktime1=%d, mktime2=%d]\n", parserOk, successfulMktime, mktimeUnchanged);
-
     return (parserOk && successfulMktime && mktimeUnchanged);
 }
 
@@ -633,11 +508,11 @@ int convertStrWithCheck(char* toConvert){
 //correct delimiters are NOT strictly enforced. recommended format is yyyy-mm-dd hh:mm:ss(ISO 8601 standard)
 //but every delimiter will work in every position(e.g. yyyy mm dd:hh-mm-ss would work as well)
 //order of units however has to remain consistent with decreasing significance from left to right
-//returned pointer is allocated and needs to be freed
+//returned tm struct(as pointer) is allocated with malloc() and needs to be freed
 struct tm* parse_time(char* in, bool dateOnly){
     struct tm* time = (struct tm*) malloc(sizeof(struct tm));
     if(time == NULL){
-        printf("] FATAL ERROR: memory exhausted, could not create time\n");
+        logMallocErr();
         return NULL;
     }
     int components[TIME_COMPONENTS];
@@ -646,16 +521,9 @@ struct tm* parse_time(char* in, bool dateOnly){
 
     for (int i = 1; i < TIME_COMPONENTS; ++i) {
         components[i] = convertStrWithCheck(strtok(NULL, delimiter));
-        //printf("%d << %d\n", i, components[i]);
     }
 
     //perform sanity checks on entered Date:
-    // Year: 2020-10000 (excluding)
-    // Month: 0-13 (excluding)
-    // Day: 0-32 (excluding)
-    // Hour: 0-24 (including 0)
-    // Minute: 0-60 (including 0)
-    // Second: 0-60 (including 0)
     time->tm_year = (components[0] > 2020 && components[0] < 10000) ? components[0]-1900 : -1;
     time->tm_mon = (components[1] > 0 && components[1] < 13) ? components[1]-1 : -1;
     time->tm_mday = (components[2] > 0 && components[2] < 32) ? components[2] : -1;
@@ -667,7 +535,7 @@ struct tm* parse_time(char* in, bool dateOnly){
     return time;
 }
 
-//prompts the user to enter a time in a loop until a valid time has been entered
+//prompts the user to enter a time in a loop until a valid time has been entered, afterwards return the entered time as time_t
 time_t inputTime(bool dateOnly){
     time_t curr_time = time(NULL);
     printf("] Time needs to be formatted according to ISO 8601: yyyy-mm-dd");printf(dateOnly ? "\n":" hh:mm:ss\n");
@@ -677,28 +545,20 @@ time_t inputTime(bool dateOnly){
     bool done = false;
 
     while(!done) {
-        printf("] Please enter date");printf(dateOnly ? ":\n":" & time:\n");
-        //fgets(input, 256, stdin);
+        printf("] Please enter date");printf(dateOnly ? ":\n>":" & time:\n>");
         readFromStdin(input, MAX_INPUT_LENGTH);
 
         time = parse_time(input, dateOnly);
 
-        //printf("mktime result: %ld\n", unixtime);
-        //printf("tm: %d-%d-%d %d:%d:%d\n", time->tm_year, time->tm_mon, time->tm_mday, time->tm_hour, time->tm_min, time->tm_sec);
-        //printf("dst: %d\n", time->tm_isdst);
         bool valid = isValidDate(time);
         if(time != NULL && valid && (mktime(time) > curr_time)){
             unixtime = mktime(time);
-            //printf("tm: %d-%d-%d %d:%d:%d\n", time->tm_year, time->tm_mon, time->tm_mday, time->tm_hour, time->tm_min, time->tm_sec);
-            //printf("dst: %d\n", time->tm_isdst);
-            printf("ctime: %s\n", ctime(&unixtime));
             done = true;
         }else if(time != NULL && valid && (mktime(time) <= curr_time)){
-            printf("] It is only possible to plan FUTURE appointments.\n");
+            fprintf(stderr, "ERROR: It is only possible to plan FUTURE appointments\n");
         }else{
-            printf("] Invalid time!\n");
+            fprintf(stderr, "ERROR: Invalid time\n");
         }
-
         free(time);
     }
 
