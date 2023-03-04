@@ -126,7 +126,7 @@ void saveList(List list, char *filename){
         Element *current = list.head->next;
         while (current->appointment != NULL){
             //y2k38-bug possible depending on data model and size of time_t.. %ld should be replaced with %lld
-            fprintf(file, "%lld,%s\n", current->appointment->start, current->appointment->description);
+            fprintf(file, "%ld,%s\n", current->appointment->start, current->appointment->description);
 
             current = current->next;
         }
@@ -147,10 +147,10 @@ List readList(char *filename){
     if(file != NULL){
         char line[MAX_INPUT_LENGTH+50];
         while (fgets(line, sizeof(line), file) != NULL){
-            long long start;
+            long start;
             char description[256];
-            //y2k38-bug possible depending on data model and size of time_t %ld should be replaced with %lld
-            if(sscanf(line, "%lld,%[^\n]", &start, description) == 2){ // Check if sscanf was able to read both parameters from the line, ignore the line otherwise
+            //y2k38-bug possible depending on data model and size of time_t %ld should be replaced with %lld(+ l.150: long long start;)
+            if(sscanf(line, "%ld,%[^\n]", &start, description) == 2){ // Check if sscanf was able to read both parameters from the line, ignore the line otherwise
                 if(start > curr_time){
                     Appointment *appointment = newAppointment(start, description);
                     if(appointment != NULL){
@@ -279,14 +279,17 @@ void toLowercase(char* str){
 //returns a pointer to the element or NULL if no matching element was found in 'list'
 Element *findElement(List list, const char* query){
     if(list.head->next != list.tail){
-        toLowercase(query);
+        int size = strlen(query);
+        char tmp[size+1];
+        strncpy(tmp, query, size);
+        toLowercase(tmp);
         char desc[MAX_INPUT_LENGTH];
         Element *current = list.head->next;
         while (current->appointment != NULL)
         {
             strncpy(desc, current->appointment->description, strlen(current->appointment->description)+1);
             toLowercase(desc);
-            if(strstr(desc, query) != NULL){
+            if(strstr(desc, tmp) != NULL){
                 return current;
             }
             current = current->next;
@@ -389,7 +392,7 @@ void menu(List list){
             printf("] Searching.. ");
             Element* ref = findElement(list, input);
             if(ref != NULL){
-                printf(" Found!\n] Date: %s\n] Description: %s\n", ctime(&(ref->appointment->start)), ref->appointment->description);
+                printf(" Found!\n] Date: %s] Description: %s\n", ctime(&(ref->appointment->start)), ref->appointment->description);
             }else{
                 printf(" Exhausted!\n  No appointment in the list matches your query\n");
             }
