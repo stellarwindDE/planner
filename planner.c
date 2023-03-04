@@ -307,7 +307,9 @@ bool deleteElement(List list, const char* query){
     if(toDelete != NULL && list.head->next != list.tail){
         Element *current = list.head->next;
         while (current->appointment != NULL){
+            printf("%ld", current->appointment->start);
             if(current->next == toDelete){
+                printf("i");
                 current->next = toDelete->next;
                 free(toDelete->appointment->description);
                 free(toDelete->appointment);
@@ -315,7 +317,10 @@ bool deleteElement(List list, const char* query){
                 return true;
             }
             current = current->next;
+            printf("\n");
         }
+    }else{
+        printf("?\n");
     }
     return false;
 }
@@ -380,10 +385,10 @@ void menu(List list){
             printf("] Are you sure you want to delete this appointment? (y/n):");
             char c;
             if((c = getchar()) == 'y' || c == 'Y'){
-                deleteElement(list, input);
-                printf("] Deletion complete!\n");
+
+                printf(deleteElement(list, input) ? "] Deletion complete\n" : "] Deletion unsuccessful\n");
             }else{
-                printf("] Deletion aborted!\n");
+                printf("] Deletion aborted\n");
             }
             clearStdin();
         } else if (!strcmp(input, "search") || !strcmp(input, "4")) {
